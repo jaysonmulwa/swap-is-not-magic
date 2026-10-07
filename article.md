@@ -24,14 +24,33 @@ That is the whole story. The rest of this post builds it up, layer by layer.
 
 This is the table I wish I had before I reached for swap. Each row is tested in a layer below.
 
-| Situation | Does swap help? | What I measured | The right fix |
-| - - | - - | - - | - - |
-| A short spike above RAM | Yes | Survived. Without swap, killed. | Swap, sized for the spike |
-| Memory allocated once, then idle | Yes | Survived at full speed. Without swap, killed. | Swap |
-| Data actively used is larger than RAM | No | Alive, but up to ~130× slower (thrashing) | More RAM, or use less memory |
-| The same, with even more swap | No | No improvement at all | Same as above |
-| A memory leak | Delays the crash only | Each 256 MB of swap = +16 s of life | Fix the leak |
-| A latency-sensitive service | No | p99 latency rose from 0.16 ms to 18.5 ms | More RAM, memory limits |
+```
++-----------------------------+--------+-----------------------------+
+| Situation                   | Swap?  | What I measured             |
++-----------------------------+--------+-----------------------------+
+| Short spike above RAM       | Helps  | Survived. No swap: killed   |
+| Idle memory                 | Helps  | Full speed. No swap: killed |
+| Working set bigger than RAM | No     | Alive, but ~130x slower     |
+| Same, with 4x more swap     | No     | No improvement              |
+| Memory leak                 | Delays | +16 s of life per 256 MB    |
+| Latency-sensitive service   | No     | p99 0.16 ms -> 18.5 ms      |
++-----------------------------+--------+-----------------------------+
+```
+
+And what to do about each:
+
+```
++--------------------------------+------------------------------+
+| Situation                      | Right fix                    |
++--------------------------------+------------------------------+
+| Short spike above RAM          | Swap, sized for the spike    |
+| Idle memory                    | Swap                         |
+| Working set bigger than RAM    | More RAM, or use less memory |
+| Same, with 4x more swap        | Same as above                |
+| Memory leak                    | Fix the leak                 |
+| Latency-sensitive service      | More RAM, memory limits      |
++--------------------------------+------------------------------+
+```
 
 The pattern is one question: **is the memory that does not fit actually being used?** If not, swap is cheap and helpful. If yes, swap turns a crash into a slowdown, and a slowdown can be worse.
 
@@ -61,23 +80,31 @@ Every test ran in a container with exactly 256 MB of RAM. Swap was set per test.
 
 Docker's flag for this is easy to misread. `--memory-swap` is not the swap size. It is RAM plus swap.
 
-| Flags | RAM | Swap |
-| - - | - -: | - -: |
-| `--memory=256m --memory-swap=256m` | 256 MB | none |
-| `--memory=256m --memory-swap=768m` | 256 MB | 512 MB |
-| `--memory=256m --memory-swap=1280m` | 256 MB | 1 GB |
+```
++-----------------------------------+--------+--------+
+| Flags                             |    RAM |   Swap |
++-----------------------------------+--------+--------+
+| --memory=256m --memory-swap=256m  | 256 MB |   none |
+| --memory=256m --memory-swap=768m  | 256 MB | 512 MB |
+| --memory=256m --memory-swap=1280m | 256 MB |   1 GB |
++-----------------------------------+--------+--------+
+```
 
 Inside the container, a small Python script plays the part of a service. It keeps a buffer in memory. A **request** is 64 random writes into that buffer, each on a random page. It reports requests per second, latency percentiles, major page faults, and how busy the CPU was.
 
 One detail about where the swap lives. On Windows, Docker runs inside WSL2 — a lightweight Linux virtual machine. The swap is a 4 GB virtual disk file inside that VM, and that file sits on the laptop's NVMe SSD. So this is close to the best case for swap. A spinning disk, or a cloud volume with limited IOPS, would be slower.
 
-| What | Value |
-| - - | - - |
-| Laptop | Intel i9-13905H, 32 GB RAM, NVMe SSD |
-| Kernel | 5.15.153.1-microsoft-standard-WSL2 |
-| Docker | 28.3.0, image `python:3.12-slim` |
-| swappiness | 60 (the default) |
-| Container RAM | 256 MB |
+```
++---------------+--------------------------------------+
+| What          | Value                                |
++---------------+--------------------------------------+
+| Laptop        | Intel i9-13905H, 32 GB RAM, NVMe SSD |
+| Kernel        | 5.15.153.1-microsoft-standard-WSL2   |
+| Docker        | 28.3.0, image python:3.12-slim       |
+| swappiness    | 60 (the default)                     |
+| Container RAM | 256 MB                               |
++---------------+--------------------------------------+
+```
 
 Each configuration ran three times. The tables show the median.
 
@@ -89,10 +116,18 @@ Start with the case swap was made for.
 
 The service holds 150 MB of data and serves requests from it. Then, for about two seconds, it needs 200 MB more — think of a big report, an import, a burst of uploads. Then it frees it. 150 + 200 is well over 256.
 
-| Config | Outcome | rps before | rps 1 s after | rps 5 s after | rps 10 s after | rps 20 s after |
-| - - | - - | - -: | - -: | - -: | - -: | - -: |
-| No swap | OOM-killed, 3 of 3 | 15,294 | — | — | — | — |
-| 512 MB swap | Survived, 3 of 3 | 17,054 | 92 | 286 | 16,169 | 15,787 |
+```
++----------------------+----------------+------------------+
+| Moment               |        No swap |      512 MB swap |
++----------------------+----------------+------------------+
+| Outcome              | killed, 3 of 3 | survived, 3 of 3 |
+| rps before the spike |         15,294 |           17,054 |
+| rps 1 s after        |              - |               92 |
+| rps 5 s after        |              - |              286 |
+| rps 10 s after       |              - |           16,169 |
+| rps 20 s after       |              - |           15,787 |
++----------------------+----------------+------------------+
+```
 
 Without swap, the kernel killed the process every time. All 150 MB of state, gone, because of a two-second spike.
 
@@ -110,11 +145,15 @@ The second good case is memory that a program allocates and then never uses agai
 
 The test: write 200 MB once and never touch it again. Then serve requests from a separate 100 MB. 300 MB in total, 256 MB of RAM.
 
-| Config | Outcome | rps | p99 latency | Major faults |
-| - - | - - | - -: | - -: | - -: |
-| 100 MB hot only, no swap (baseline) | Survived | 15,599 | 0.16 ms | 0 |
-| + 200 MB cold, no swap | OOM-killed, 3 of 3 | — | — | — |
-| + 200 MB cold, 512 MB swap | Survived | 15,613 | 0.15 ms | 0 |
+```
++----------------------------+------------+---------+--------+
+| Config                     |        rps |     p99 | Faults |
++----------------------------+------------+---------+--------+
+| 100 MB hot, no swap        |     15,599 | 0.16 ms |      0 |
+| + 200 MB cold, no swap     | killed 3/3 |       - |      - |
+| + 200 MB cold, 512 MB swap |     15,613 | 0.15 ms |      0 |
++----------------------------+------------+---------+--------+
+```
 
 Without swap, that idle 200 MB was enough to get the process killed.
 
@@ -128,17 +167,23 @@ Now change one thing. Instead of a small busy part and a large idle part, make a
 
 The memory a program is actively using is called its **working set**. I grew it step by step, with 256 MB of RAM and 1 GB of swap.
 
-| Working set | rps | p50 | p99 | Major faults (10 s) | CPU busy |
-| - -: | - -: | - -: | - -: | - -: | - -: |
-| 64 MB | 16,622 | 0.05 ms | 0.13 ms | 0 | 100% |
-| 128 MB | 13,828 | 0.06 ms | 0.17 ms | 0 | 101% |
-| 192 MB | 14,408 | 0.06 ms | 0.16 ms | 0 | 100% |
-| 224 MB | 13,870 | 0.07 ms | 0.16 ms | 0 | 101% |
-| 256 MB | 4,016 | 0.10 ms | 1.3 ms | 18,625 | 52% |
-| 288 MB | 396 | 2.0 ms | 10.4 ms | 31,212 | 21% |
-| 320 MB | 285 | 3.2 ms | 10.7 ms | 38,604 | 22% |
-| 384 MB | 164 | 5.7 ms | 13.9 ms | 35,915 | 19% |
-| 512 MB | 109 | 8.5 ms | 18.5 ms | 35,478 | 21% |
+"Faults" is major page faults during the 10-second measurement. "CPU" is how busy one core was.
+
+```
++-------------+--------+---------+---------+--------+------+
+| Working set |    rps |     p50 |     p99 | Faults |  CPU |
++-------------+--------+---------+---------+--------+------+
+|       64 MB | 16,622 | 0.05 ms | 0.13 ms |      0 | 100% |
+|      128 MB | 13,828 | 0.06 ms | 0.17 ms |      0 | 101% |
+|      192 MB | 14,408 | 0.06 ms | 0.16 ms |      0 | 100% |
+|      224 MB | 13,870 | 0.07 ms | 0.16 ms |      0 | 101% |
+|      256 MB |  4,016 | 0.10 ms |  1.3 ms | 18,625 |  52% |
+|      288 MB |    396 |  2.0 ms | 10.4 ms | 31,212 |  21% |
+|      320 MB |    285 |  3.2 ms | 10.7 ms | 38,604 |  22% |
+|      384 MB |    164 |  5.7 ms | 13.9 ms | 35,915 |  19% |
+|      512 MB |    109 |  8.5 ms | 18.5 ms | 35,478 |  21% |
++-------------+--------+---------+---------+--------+------+
+```
 
 This is not a slope. It is a cliff.
 
@@ -158,11 +203,15 @@ That is worth remembering, because it is backwards from what most people expect.
 
 The natural reaction to the table above is: maybe it needs more swap. So I tested that directly. Same 384 MB working set, same 256 MB of RAM, different amounts of swap.
 
-| Swap | rps | p50 | p99 | Major faults (10 s) |
-| - -: | - -: | - -: | - -: | - -: |
+```
++--------+-----+--------+---------+--------+
+|   Swap | rps |    p50 |     p99 | Faults |
++--------+-----+--------+---------+--------+
 | 512 MB | 173 | 5.2 ms | 17.4 ms | 37,991 |
-| 1 GB | 164 | 5.7 ms | 13.9 ms | 35,915 |
-| 2 GB | 153 | 5.9 ms | 16.3 ms | 33,573 |
+|   1 GB | 164 | 5.7 ms | 13.9 ms | 35,915 |
+|   2 GB | 153 | 5.9 ms | 16.3 ms | 33,573 |
++--------+-----+--------+---------+--------+
+```
 
 No improvement. Four times more swap, and if anything slightly fewer requests — though a gap that small is within noise.
 
@@ -176,12 +225,18 @@ A memory leak is memory a program keeps allocating and never frees. It is the mo
 
 The test: serve requests from a 64 MB working set, while leaking 16 MB every second. Run until the kernel kills it.
 
-| Swap | Outcome | Survived | Leaked at death | rps, first 3 s | rps, last 3 s | p99, last 3 s |
-| - -: | - - | - -: | - -: | - -: | - -: | - -: |
-| none | OOM-killed, 3 of 3 | 11.1 s | 176 MB | 16,101 | 17,568 | 0.11 ms |
-| 256 MB | OOM-killed, 3 of 3 | 27.4 s | 432 MB | 15,211 | 16,949 | 0.13 ms |
-| 512 MB | OOM-killed, 3 of 3 | 43.4 s | 688 MB | 14,704 | 16,353 | 0.13 ms |
-| 1 GB | OOM-killed, 3 of 3 | 75.7 s | 1,200 MB | 15,962 | 17,462 | 0.12 ms |
+```
++--------+--------+----------+-----------+---------+---------+
+|   Swap |  Lived |   Leaked | rps start | rps end | p99 end |
++--------+--------+----------+-----------+---------+---------+
+|   none | 11.1 s |   176 MB |    16,101 |  17,568 | 0.11 ms |
+| 256 MB | 27.4 s |   432 MB |    15,211 |  16,949 | 0.13 ms |
+| 512 MB | 43.4 s |   688 MB |    14,704 |  16,353 | 0.13 ms |
+|   1 GB | 75.7 s | 1,200 MB |    15,962 |  17,462 | 0.12 ms |
++--------+--------+----------+-----------+---------+---------+
+```
+
+"Start" is the first 3 seconds, "end" the last 3 before death.
 
 Every single run died. Swap never stopped the crash.
 
@@ -203,11 +258,15 @@ Throughput is one number. Most users feel the slow requests, not the average. Th
 
 From the Layer 5 runs:
 
-| Working set | p99 latency | Slowest single request |
-| - -: | - -: | - -: |
-| 224 MB (fits) | 0.16 ms | 5.0 ms |
-| 256 MB | 1.3 ms | 20.9 ms |
-| 512 MB | 18.5 ms | 58.4 ms |
+```
++---------------+-------------+------------------------+
+|   Working set | p99 latency | Slowest single request |
++---------------+-------------+------------------------+
+| 224 MB (fits) |     0.16 ms |                 5.0 ms |
+|        256 MB |      1.3 ms |                20.9 ms |
+|        512 MB |     18.5 ms |                58.4 ms |
++---------------+-------------+------------------------+
+```
 
 As soon as the working set crossed RAM, the p99 rose eightfold. At 512 MB it was about 115 times worse.
 
