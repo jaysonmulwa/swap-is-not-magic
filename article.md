@@ -1,4 +1,4 @@
-# Why adding swap is not always the fix: a memory case study, measured in a 256 MB container.
+# Why adding swap is not always the fix
 
 Your service runs out of memory and gets killed. Someone says: add swap. You add swap, and the crashes stop.
 
