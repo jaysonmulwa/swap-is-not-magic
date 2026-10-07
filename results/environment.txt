@@ -1,0 +1,8 @@
+host: Windows-11-10.0.26200-SP0 Intel64 Family 6 Model 186 Stepping 2, GenuineIntel
+docker: 28.3.0
+image: python:3.12-slim
+container RAM limit: 256 MB
+inside the VM (kernel, cpus, memory, swappiness):
+5.15.153.1-microsoft-standard-WSL2
+20
+60

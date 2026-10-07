@@ -1,0 +1,105 @@
+[0] spike      no swap                        exit=137 oom=True 13.4s
+[0] spike      512 MB swap                    exit=0 oom=False 52.3s
+[0] cold       hot 100 MB only, no swap       exit=0 oom=False 14.8s
+[0] cold       + cold 200 MB, no swap         exit=137 oom=True 1.6s
+[0] cold       + cold 200 MB, 512 MB swap     exit=0 oom=False 15.3s
+[0] workingset 64 MB                          exit=0 oom=False 14.5s
+[0] workingset 128 MB                         exit=0 oom=False 14.6s
+[0] workingset 192 MB                         exit=0 oom=False 15.1s
+[0] workingset 224 MB                         exit=0 oom=False 14.7s
+[0] workingset 256 MB                         exit=0 oom=False 21.6s
+[0] workingset 288 MB                         exit=0 oom=False 20.8s
+[0] workingset 320 MB                         exit=0 oom=False 24.1s
+[0] workingset 384 MB                         exit=0 oom=False 24.2s
+[0] workingset 512 MB                         exit=0 oom=False 27.9s
+[0] moreswap   384 MB hot, 512 MB swap        exit=0 oom=False 24.6s
+[0] moreswap   384 MB hot, 2 GB swap          exit=0 oom=False 25.9s
+[0] leak       0 MB swap                      exit=137 oom=True 13.0s
+[0] leak       256 MB swap                    exit=137 oom=True 29.4s
+[0] leak       512 MB swap                    exit=137 oom=True 46.3s
+[0] leak       1024 MB swap                   exit=137 oom=True 79.1s
+[1] spike      no swap                        exit=137 oom=True 10.7s
+[1] spike      512 MB swap                    exit=0 oom=False 53.0s
+[1] cold       hot 100 MB only, no swap       exit=0 oom=False 14.5s
+[1] cold       + cold 200 MB, no swap         exit=137 oom=True 1.3s
+[1] cold       + cold 200 MB, 512 MB swap     exit=0 oom=False 14.8s
+[1] workingset 64 MB                          exit=0 oom=False 14.4s
+[1] workingset 128 MB                         exit=0 oom=False 14.2s
+[1] workingset 192 MB                         exit=0 oom=False 14.5s
+[1] workingset 224 MB                         exit=0 oom=False 14.4s
+[1] workingset 256 MB                         exit=0 oom=False 18.0s
+[1] workingset 288 MB                         exit=0 oom=False 20.2s
+[1] workingset 320 MB                         exit=0 oom=False 20.0s
+[1] workingset 384 MB                         exit=0 oom=False 20.0s
+[1] workingset 512 MB                         exit=0 oom=False 22.0s
+[1] moreswap   384 MB hot, 512 MB swap        exit=0 oom=False 19.9s
+[1] moreswap   384 MB hot, 2 GB swap          exit=0 oom=False 20.0s
+[1] leak       0 MB swap                      exit=137 oom=True 12.4s
+[1] leak       256 MB swap                    exit=137 oom=True 28.8s
+[1] leak       512 MB swap                    exit=137 oom=True 44.8s
+[1] leak       1024 MB swap                   exit=137 oom=True 77.3s
+[2] spike      no swap                        exit=137 oom=True 9.5s
+[2] spike      512 MB swap                    exit=0 oom=False 52.3s
+[2] cold       hot 100 MB only, no swap       exit=0 oom=False 14.9s
+[2] cold       + cold 200 MB, no swap         exit=137 oom=True 2.8s
+[2] cold       + cold 200 MB, 512 MB swap     exit=0 oom=False 16.3s
+[2] workingset 64 MB                          exit=0 oom=False 15.0s
+[2] workingset 128 MB                         exit=0 oom=False 15.0s
+[2] workingset 192 MB                         exit=0 oom=False 15.0s
+[2] workingset 224 MB                         exit=0 oom=False 15.3s
+[2] workingset 256 MB                         exit=0 oom=False 20.2s
+[2] workingset 288 MB                         exit=0 oom=False 20.0s
+[2] workingset 320 MB                         exit=0 oom=False 21.4s
+[2] workingset 384 MB                         exit=0 oom=False 24.6s
+[2] workingset 512 MB                         exit=0 oom=False 24.1s
+[2] moreswap   384 MB hot, 512 MB swap        exit=0 oom=False 22.8s
+[2] moreswap   384 MB hot, 2 GB swap          exit=0 oom=False 21.9s
+[2] leak       0 MB swap                      exit=137 oom=True 12.7s
+[2] leak       256 MB swap                    exit=137 oom=True 28.9s
+[2] leak       512 MB swap                    exit=137 oom=True 44.9s
+[2] leak       1024 MB swap                   exit=137 oom=True 77.1s
+## spike: 150 MB steady, +200 MB for 2 s
+
+| config | OOM-killed | rps before | spike took (s) | rps 1s after | rps 5s after | rps 10s after | rps 20s after | back to 90% after (s) |
+|---|---|---|---|---|---|---|---|---|
+| no swap | 3/3 | 15294 | - | - | - | - | - | - |
+| 512 MB swap | 0/3 | 17054 | 2.4 | 92 | 286 | 16169 | 15787 | 9 |
+
+## cold: idle memory next to a hot set
+
+| config | OOM-killed | rps | p50 (us) | p99 (us) | max (us) | major faults | CPU % |
+|---|---|---|---|---|---|---|---|
+| hot 100 MB only, no swap | 0/3 | 15599 | 56.0 | 156.1 | 10282.2 | 0 | 101 |
+| + cold 200 MB, no swap | 3/3 | - | - | - | - | - | - |
+| + cold 200 MB, 512 MB swap | 0/3 | 15613 | 58.3 | 149.1 | 10245.8 | 0 | 100 |
+
+## workingset: everything hot, 256 MB RAM, 1 GB swap
+
+| config | OOM-killed | rps | p50 (us) | p99 (us) | max (us) | major faults | CPU % |
+|---|---|---|---|---|---|---|---|
+| 64 MB | 0/3 | 16622 | 52.8 | 125.9 | 7910.4 | 0 | 100 |
+| 128 MB | 0/3 | 13828 | 63.7 | 168.3 | 9054.3 | 0 | 101 |
+| 192 MB | 0/3 | 14408 | 61.7 | 155.8 | 5195.5 | 0 | 100 |
+| 224 MB | 0/3 | 13870 | 66.0 | 157.0 | 5036.8 | 0 | 101 |
+| 256 MB | 0/3 | 4016 | 99.0 | 1299.5 | 20871.6 | 18625 | 52 |
+| 288 MB | 0/3 | 396 | 2022.4 | 10428.8 | 28952.2 | 31212 | 21 |
+| 320 MB | 0/3 | 285 | 3155.6 | 10728.2 | 33500.5 | 38604 | 22 |
+| 384 MB | 0/3 | 164 | 5671.8 | 13936.8 | 34318.1 | 35915 | 19 |
+| 512 MB | 0/3 | 109 | 8504.1 | 18548.0 | 58381.6 | 35478 | 21 |
+
+## moreswap: does more swap help a thrashing set?
+
+| config | OOM-killed | rps | p50 (us) | p99 (us) | max (us) | major faults | CPU % |
+|---|---|---|---|---|---|---|---|
+| 384 MB hot, 512 MB swap | 0/3 | 173 | 5178.2 | 17369.5 | 25096.6 | 37991 | 19 |
+| 384 MB hot, 2 GB swap | 0/3 | 153 | 5903.9 | 16318.1 | 30771.7 | 33573 | 21 |
+
+## leak: 64 MB hot, leaking 16 MB/s
+
+| config | OOM-killed | survived (s) | leaked at death (MB) | rps first 3s | rps last 3s | p99 last 3s (us) | alloc ms/s last 3s |
+|---|---|---|---|---|---|---|---|
+| 0 MB swap | 3/3 | 11.1 | 176 | 16101 | 17568 | 105.6 | 8 |
+| 256 MB swap | 3/3 | 27.4 | 432 | 15211 | 16949 | 125.5 | 25 |
+| 512 MB swap | 3/3 | 43.4 | 688 | 14704 | 16353 | 133.5 | 26 |
+| 1024 MB swap | 3/3 | 75.7 | 1200 | 15962 | 17462 | 118.2 | 28 |
+

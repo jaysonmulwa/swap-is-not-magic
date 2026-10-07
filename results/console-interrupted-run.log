@@ -1,0 +1,22 @@
+[0] spike      no swap                        exit=137 oom=True 11.2s
+[0] spike      512 MB swap                    exit=0 oom=False 56.8s
+[0] cold       hot 100 MB only, no swap       exit=0 oom=False 15.7s
+[0] cold       + cold 200 MB, no swap         exit=137 oom=True 2.2s
+[0] cold       + cold 200 MB, 512 MB swap     exit=0 oom=False 16.8s
+[0] workingset 64 MB                          exit=0 oom=False 17.2s
+[0] workingset 128 MB                         exit=0 oom=False 17.3s
+[0] workingset 192 MB                         exit=0 oom=False 16.7s
+[0] workingset 224 MB                         exit=0 oom=False 17.3s
+[0] workingset 256 MB                         exit=0 oom=False 22.0s
+[0] workingset 288 MB                         exit=0 oom=False 30.2s
+[0] workingset 320 MB                         exit=0 oom=False 27.9s
+[0] workingset 384 MB                         exit=0 oom=False 33.5s
+[0] workingset 512 MB                         exit=0 oom=False 38.8s
+[0] moreswap   384 MB hot, 512 MB swap        exit=0 oom=False 33.8s
+[0] moreswap   384 MB hot, 2 GB swap          exit=0 oom=False 35.1s
+[0] leak       0 MB swap                      exit=137 oom=True 16.2s
+[0] leak       256 MB swap                    exit=137 oom=True 35.8s
+[0] leak       512 MB swap                    exit=137 oom=True 48.7s
+[0] leak       1024 MB swap                   exit=137 oom=True 83.9s
+[1] spike      no swap                        exit=137 oom=True 11.4s
+[1] spike      512 MB swap                    exit=0 oom=False 58.0s
