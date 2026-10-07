@@ -18,7 +18,7 @@ A memory leak was worse in a different way. Swap did not stop the crash. It dela
 
 That is the whole story. The rest of this post builds it up, layer by layer.
 
-**What is measured and what is not.** The spike, idle-memory, thrashing, swap-size and leak results are measured, three runs each, on one laptop. The section on other platforms, and the fixes at the end, are background knowledge. They were not run here.
+**What is measured and what is not.** The spike, idle-memory, thrashing, swap-size and leak results are measured, three runs each, on one laptop. The section on other platforms, and the fixes at the end, are background knowledge. They were not run here. The maths section fits a simple model to the measured data, and says which values are fitted.
 
 ## When swap helps, and when it does not
 
@@ -297,6 +297,71 @@ The behaviour needs only two things: a working set larger than RAM, and somewher
 
 What I measured is one laptop, with a fast SSD under the swap. On slower storage I would expect the cliff to be deeper, not shallower.
 
+## The maths behind the cliff
+
+The cliff in Layer 5 looks dramatic. It turns out to be simple arithmetic.
+
+There is a whole field for this. The [External Memory](https://en.algorithmica.org/hpc/external-memory/) chapter of Algorithmica's *Algorithms for Modern Hardware* describes the external memory model. In it, the only thing that costs anything is moving a block between a small fast memory and a large slow one. Work on data already in fast memory is treated as free.
+
+My test bench is that model, almost exactly:
+
+```
++---------------------+----------------------+
+| In the model        | In these tests       |
++---------------------+----------------------+
+| Fast memory, size M | The 256 MB RAM limit |
+| Slow memory         | Swap                 |
+| Block, size B       | A 4 KB page          |
+| One block transfer  | One major page fault |
++---------------------+----------------------+
+```
+
+My service picks pages uniformly at random. So the chance a page is already in RAM is just the share of the working set that fits:
+
+```
+hit chance          = M / W
+misses per request  = 64 x (1 - M / W)
+time per request    = t0 + misses per request x t_fault
+```
+
+W is the working set. t0 is the time per request when everything fits: 72 µs, from the 224 MB row. t_fault is the cost of one fault.
+
+Two values here are fitted from the data, not measured directly. M comes out at about 250 MB — the RAM left for the buffer once Python and the container take their share. t_fault comes out at about 270 µs. With those two, the model predicts the rest. "Faults" here is faults per request.
+
+```
++--------+-------------+--------------+----------+-----------+
+|    Set | Faults real | Faults model | rps real | rps model |
++--------+-------------+--------------+----------+-----------+
+| 256 MB |         0.5 |          1.5 |    4,016 |     2,096 |
+| 288 MB |         7.9 |          8.4 |      396 |       425 |
+| 320 MB |        13.5 |         14.0 |      285 |       260 |
+| 384 MB |        21.9 |         22.3 |      164 |       164 |
+| 512 MB |        32.5 |         32.8 |      109 |       112 |
++--------+-------------+--------------+----------+-----------+
+```
+
+From 288 MB up, the model lands within about 10%. At 256 MB, right on the edge, it is off by half. The kernel kept more in RAM than a simple model allows.
+
+The fault cost is also a second opinion on Layer 1. There I got 0.23 ms per fault from waiting time. Here the fit gives 0.27 ms. Two different routes, nearly the same answer.
+
+**Why a cliff, not a slope?** Misses grow in a straight line with the working set. But a page write that hits RAM costs about 1 µs in my Python service. One that misses costs about 270 µs. So one miss costs as much as roughly 250 hits.
+
+At 288 MB, only about 1 in 8 page writes missed. That alone made the service 35 times slower. You do not need to miss often. You only need to miss at all.
+
+**Which page goes to swap?** That is the eviction policy. The same book's [Eviction Policies](https://en.algorithmica.org/hpc/external-memory/policies/) page covers a result by Sleator and Tarjan ("Amortized efficiency of list update and paging rules", *Communications of the ACM*, 1985):
+
+```
+LRU(M) <= 2 x OPT(M/2)
+```
+
+LRU evicts the least recently used block. OPT is a perfect policy that knows the future. In words: LRU with M memory makes at most twice the misses of a perfect policy with half the memory. Linux uses an approximation of LRU — on this kernel, an "active" and an "inactive" list.
+
+Three results in this post follow from that policy:
+
+- **Idle memory and leaks had zero faults** (Layers 4 and 7). A page nobody reads is always the least recently used. So it is always the first to go to swap.
+- **The spike hangover** (Layer 3). The spike's pages were newer, so the steady 150 MB was evicted instead. 150 + 200 − 250 is about 100 MB pushed out, or 25,600 pages. At 270 µs each, that is about 7 seconds of faults to bring back. I measured about 9 seconds to get back to 90%. A rough check, not a precise one.
+- **Random access is not the worst case.** The theorem's worst case is a loop that scans slightly more blocks than fit, in order. LRU then misses on every access, 100%. My random access missed about half the time at 512 MB. A service that scans a table just bigger than RAM, in order, would thrash harder than anything in this post.
+
 ## Open questions
 
 These are gaps in the evidence. None changes the conclusion.
@@ -306,6 +371,8 @@ These are gaps in the evidence. None changes the conclusion.
 **What happens with a leak that is not cold?** My leak was never read again. A leak that is still read now and then — a cache with no eviction, say — would behave more like Layer 5 than Layer 7. I did not test it.
 
 **Would zram change the picture?** zram is swap that lives in compressed RAM instead of on disk. It makes faults much cheaper. It would likely soften the cliff in Layer 5. I did not test it.
+
+**How bad is an in-order scan?** The maths section predicts 100% misses for a loop over slightly more than RAM. I did not measure it.
 
 **Where exactly does the cliff start?** Between 224 MB and 256 MB of working set, inside 256 MB of RAM. Python and the container take some memory too. A finer sweep would place it more precisely.
 
@@ -358,6 +425,12 @@ It runs every test above, three times, in about 30 minutes. Raw output goes to `
 ## Glossary
 
 **cgroup** — A Linux feature that limits how much CPU, memory and other resources a group of processes can use. Docker memory limits are built on it.
+
+**Eviction policy** — The rule that decides which block leaves fast memory when space runs out.
+
+**External memory model** — A cost model that counts only block transfers between a small fast memory and a large slow one.
+
+**LRU** — Least recently used. An eviction policy that removes the block nobody has touched for the longest time. Linux approximates it.
 
 **Major page fault** — A program touched a page that is not in RAM, so the kernel has to read it from disk. The program waits.
 
